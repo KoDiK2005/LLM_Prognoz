@@ -1,31 +1,23 @@
-"""Temporary stand-in for auth, used until the auth/multi-tenancy iteration.
-
-get_current_user lazily creates a single dev organization + user so
-foreign keys on datasets/forecast_runs resolve. Replace with real
-session-based auth later; call sites only depend on getting a User back.
-"""
-
-from sqlalchemy import select
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.organization import Organization
+from app.core.security import decode_access_token
+from app.db.session import get_db
 from app.models.user import User
 
-_DEV_EMAIL = "dev@local"
+_bearer_scheme = HTTPBearer()
 
 
-async def get_current_user(db: AsyncSession) -> User:
-    result = await db.execute(select(User).where(User.email == _DEV_EMAIL))
-    user = result.scalar_one_or_none()
-    if user is not None:
-        return user
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    user_id = decode_access_token(credentials.credentials)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    org = Organization(name="Dev Org")
-    db.add(org)
-    await db.flush()
-
-    user = User(org_id=org.id, email=_DEV_EMAIL, hashed_password="", role="owner")
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
     return user

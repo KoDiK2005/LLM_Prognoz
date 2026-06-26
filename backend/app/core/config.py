@@ -9,6 +9,9 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/llm_prognoz"
 
+    secret_key: str = "dev-secret-change-me"
+    access_token_expire_minutes: int = 60 * 24 * 7
+
     # LLM provider API keys — populated via .env, never committed
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None

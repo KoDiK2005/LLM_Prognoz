@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.dataset import Dataset
 from app.models.forecast_run import ForecastRun, ForecastRunStatus
 from app.models.llm_insight import LLMInsight
+from app.models.user import User
 from app.schemas.forecast_run import ForecastRunCreate, ForecastRunOut
 from app.schemas.llm_insight import GenerateInsightsRequest, LLMInsightOut
 from app.services import storage
@@ -21,10 +22,10 @@ router = APIRouter(prefix="/forecasts", tags=["forecasts"])
 
 @router.post("", response_model=ForecastRunOut, status_code=201)
 async def create_forecast_run(
-    payload: ForecastRunCreate, db: AsyncSession = Depends(get_db)
+    payload: ForecastRunCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> ForecastRun:
-    user = await get_current_user(db)
-
     dataset = await db.get(Dataset, payload.dataset_id)
     if dataset is None or dataset.org_id != user.org_id:
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -63,8 +64,7 @@ async def create_forecast_run(
     return run
 
 
-async def _get_owned_run(run_id: uuid.UUID, db: AsyncSession) -> ForecastRun:
-    user = await get_current_user(db)
+async def _get_owned_run(run_id: uuid.UUID, user: User, db: AsyncSession) -> ForecastRun:
     result = await db.execute(select(ForecastRun).where(ForecastRun.id == run_id))
     run = result.scalar_one_or_none()
     if run is None or run.org_id != user.org_id:
@@ -73,15 +73,22 @@ async def _get_owned_run(run_id: uuid.UUID, db: AsyncSession) -> ForecastRun:
 
 
 @router.get("/{run_id}", response_model=ForecastRunOut)
-async def get_forecast_run(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> ForecastRun:
-    return await _get_owned_run(run_id, db)
+async def get_forecast_run(
+    run_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ForecastRun:
+    return await _get_owned_run(run_id, user, db)
 
 
 @router.post("/{run_id}/insights", response_model=list[LLMInsightOut], status_code=201)
 async def create_insights(
-    run_id: uuid.UUID, payload: GenerateInsightsRequest, db: AsyncSession = Depends(get_db)
+    run_id: uuid.UUID,
+    payload: GenerateInsightsRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> list[LLMInsight]:
-    run = await _get_owned_run(run_id, db)
+    run = await _get_owned_run(run_id, user, db)
     if run.status != ForecastRunStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Forecast run is not completed yet")
 
@@ -100,8 +107,12 @@ async def create_insights(
 
 
 @router.get("/{run_id}/insights", response_model=list[LLMInsightOut])
-async def list_insights(run_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> list[LLMInsight]:
-    run = await _get_owned_run(run_id, db)
+async def list_insights(
+    run_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[LLMInsight]:
+    run = await _get_owned_run(run_id, user, db)
     result = await db.execute(
         select(LLMInsight)
         .where(LLMInsight.forecast_run_id == run.id)

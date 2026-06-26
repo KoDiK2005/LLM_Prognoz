@@ -98,8 +98,20 @@ docker compose run --rm backend python -m alembic upgrade head
 - Добавить провайдера — реализовать `LLMClient.generate()` и подключить
   в `registry.py`, остальной пайплайн (промпт, хранение, API) не меняется.
 
+## Auth
+
+- `POST /api/v1/auth/register` — создаёт organization + user (роль
+  owner), возвращает JWT.
+- `POST /api/v1/auth/login` — email+пароль → JWT.
+- `GET /api/v1/auth/me` — текущий пользователь по токену.
+- Все остальные эндпоинты (`datasets`, `forecasts`) требуют
+  `Authorization: Bearer <token>` и работают только в рамках org
+  пользователя из токена — проверено: пользователь другой организации
+  не видит чужие datasets и не может запустить forecast на чужом dataset_id (404).
+- Пароли — bcrypt, токены — JWT (HS256, `SECRET_KEY` из `.env`).
+
 ## Статус
 
-Итерация 4: LLM-интерпретации (multi-provider) с mock-фоллбеком на
-отсутствующие ключи. Проверено end-to-end через Docker. Дальше — auth и
-мультитенантность (сейчас `app/api/deps.py` — заглушка на один dev-аккаунт).
+Итерация 5: auth (регистрация/логин/JWT) + мультитенантная изоляция.
+Проверено end-to-end через Docker, включая cross-org доступ (404).
+Дальше — очередь задач для долгих прогонов (Celery/Arq) и фронтенд UI.

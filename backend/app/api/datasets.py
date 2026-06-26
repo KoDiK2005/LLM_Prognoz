@@ -19,6 +19,7 @@ async def upload_dataset(
     date_column: str = Form(...),
     value_column: str = Form(...),
     name: str = Form(...),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Dataset:
     content = await file.read()
@@ -28,7 +29,6 @@ async def upload_dataset(
     except DataValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    user = await get_current_user(db)
     storage_path = storage.save(user.org_id, file.filename or "upload.csv", content)
 
     dataset = Dataset(
@@ -45,8 +45,9 @@ async def upload_dataset(
 
 
 @router.get("", response_model=list[DatasetOut])
-async def list_datasets(db: AsyncSession = Depends(get_db)) -> list[Dataset]:
-    user = await get_current_user(db)
+async def list_datasets(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> list[Dataset]:
     result = await db.execute(
         select(Dataset).where(Dataset.org_id == user.org_id).order_by(Dataset.created_at.desc())
     )
