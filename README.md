@@ -51,7 +51,24 @@ docker compose up --build
 - Backend: http://localhost:8000/api/v1/health
 - Frontend: http://localhost:3000
 
+Применить миграции (после `docker compose up -d db`):
+
+```bash
+docker compose run --rm backend python -m alembic upgrade head
+```
+
+## Схема данных
+
+- `organizations`, `users` — мультитенантность с самого начала.
+- `datasets` — загруженный пользователем источник данных (файл +
+  маппинг колонок: какая колонка дата, какая значение).
+- `forecast_runs` — один версионированный прогон: параметры модели,
+  числовой результат, статус. Снэпшот данных — через `dataset_id` +
+  `created_at` прогона.
+- `llm_insights` — интерпретации одного прогона разными LLM-провайдерами
+  (несколько строк на один `forecast_run_id`).
+
 ## Статус
 
-Итерация 1: скелет проекта (backend/frontend/docker-compose). Дальше —
-схема БД, очередь задач для прогонов, движок прогноза, интеграция LLM.
+Итерация 2: схема БД (SQLAlchemy модели + Alembic миграции). Дальше —
+движок прогноза (Prophet baseline), эндпоинт загрузки данных, интеграция LLM.
