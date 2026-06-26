@@ -68,7 +68,23 @@ docker compose run --rm backend python -m alembic upgrade head
 - `llm_insights` — интерпретации одного прогона разными LLM-провайдерами
   (несколько строк на один `forecast_run_id`).
 
+## Движок прогноза
+
+- `POST /api/v1/datasets/upload` — загрузка CSV (multipart: `file`,
+  `date_column`, `value_column`, `name`). Валидация и очистка ряда
+  (парсинг дат, приведение к регулярной частоте, интерполяция пропусков)
+  происходит сразу при загрузке.
+- `POST /api/v1/forecasts` — запускает прогноз по `dataset_id` на
+  `horizon` точек вперёд, сохраняет результат на `forecast_runs`.
+- Модель — Holt-Winters (statsmodels), а не Prophet: даёт тренд +
+  сезонность без тяжёлых C++-зависимостей (cmdstan), которые сложно
+  собрать без Visual Studio Build Tools. Сезонный период подбирается по
+  частоте ряда (день → неделя, месяц → год и т.д.), если данных хватает
+  на два полных цикла.
+- Auth ещё нет — `app/api/deps.py` создаёт/использует одного dev-пользователя.
+  Будет заменено в итерации с мультитенантным auth.
+
 ## Статус
 
-Итерация 2: схема БД (SQLAlchemy модели + Alembic миграции). Дальше —
-движок прогноза (Prophet baseline), эндпоинт загрузки данных, интеграция LLM.
+Итерация 3: движок прогноза (upload CSV + Holt-Winters baseline).
+Проверено end-to-end через Docker. Дальше — интеграция LLM-интерпретаций.
