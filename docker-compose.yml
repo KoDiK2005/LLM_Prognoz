@@ -28,6 +28,7 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
+      - ./backend/storage:/app/storage
     depends_on:
       db:
         condition: service_healthy

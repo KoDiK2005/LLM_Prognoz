@@ -84,7 +84,22 @@ docker compose run --rm backend python -m alembic upgrade head
 - Auth ещё нет — `app/api/deps.py` создаёт/использует одного dev-пользователя.
   Будет заменено в итерации с мультитенантным auth.
 
+## LLM-интерпретации
+
+- `POST /api/v1/forecasts/{run_id}/insights` — генерирует интерпретацию
+  прогноза одной или несколькими LLM сразу (`{"providers": ["openai",
+  "anthropic"]}`), каждая сохраняется отдельной строкой в `llm_insights`.
+- `GET /api/v1/forecasts/{run_id}/insights` — список уже сгенерированных
+  интерпретаций.
+- Провайдер выбирается через `app/services/llm/registry.py`: если в
+  `.env` задан ключ (`OPENAI_API_KEY`/`ANTHROPIC_API_KEY`) — используется
+  реальный клиент, иначе — `MockLLMClient` (детерминированная заглушка).
+  Google-клиент пока не реализован, всегда падает на mock.
+- Добавить провайдера — реализовать `LLMClient.generate()` и подключить
+  в `registry.py`, остальной пайплайн (промпт, хранение, API) не меняется.
+
 ## Статус
 
-Итерация 3: движок прогноза (upload CSV + Holt-Winters baseline).
-Проверено end-to-end через Docker. Дальше — интеграция LLM-интерпретаций.
+Итерация 4: LLM-интерпретации (multi-provider) с mock-фоллбеком на
+отсутствующие ключи. Проверено end-to-end через Docker. Дальше — auth и
+мультитенантность (сейчас `app/api/deps.py` — заглушка на один dev-аккаунт).
