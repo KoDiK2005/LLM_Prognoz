@@ -1,0 +1,14 @@
+# Use on a machine with an NVIDIA GPU and the NVIDIA Container Toolkit
+# installed: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+#
+# Without this override, Ollama runs on CPU only — functional, but slow
+# for anything bigger than a 1-3B model.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

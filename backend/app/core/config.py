@@ -17,5 +17,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
 
+    # Self-hosted LLM via Ollama — no API key needed, just a reachable server.
+    ollama_base_url: str = "http://ollama:11434"
+    ollama_model: str = "llama3.2:1b"
+
 
 settings = Settings()

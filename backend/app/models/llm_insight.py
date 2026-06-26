@@ -11,6 +11,7 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
+    OLLAMA = "ollama"
 
 
 class LLMInsight(UUIDPkMixin, TimestampMixin, Base):

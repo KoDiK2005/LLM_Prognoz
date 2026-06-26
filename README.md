@@ -110,8 +110,35 @@ docker compose run --rm backend python -m alembic upgrade head
   не видит чужие datasets и не может запустить forecast на чужом dataset_id (404).
 - Пароли — bcrypt, токены — JWT (HS256, `SECRET_KEY` из `.env`).
 
+## Self-hosted LLM (Ollama)
+
+Кроме облачных провайдеров (OpenAI/Anthropic) есть провайдер `ollama` —
+открытая модель, запущенная локально через [Ollama](https://ollama.com),
+без внешних API-ключей и без отправки данных третьим лицам.
+
+- `docker-compose.yml` — сервис `ollama` (CPU по умолчанию).
+- `docker-compose.gpu.yml` — оверрайд с GPU-резервацией (NVIDIA Container
+  Toolkit), для машины с GPU:
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+  docker compose exec ollama ollama pull llama3.1:8b   # или qwen2.5:14b на 16GB VRAM
+  ```
+  Модель задаётся через `OLLAMA_MODEL` в `.env` (дефолт — `llama3.2:1b`,
+  маленькая модель для CPU/слабых машин).
+- `app/services/llm/ollama_client.py` — HTTP-клиент к `/api/generate`.
+  Подключается в `registry.py` без проверки ключа (self-hosted = всегда
+  доступен, если сервер поднят).
+- Если Ollama недоступна, `generate_insight()` не валит весь запрос —
+  записывает ошибку как текст инсайта для этого провайдера, остальные
+  провайдеры в батче всё равно отрабатывают.
+
+**Не проверено end-to-end** на этой машине: здесь нет NVIDIA GPU (только
+встроенная Intel-графика) и было мало места на диске (Docker Desktop
+сам подчищал образы). Проверено статически — `docker compose config`
+с GPU-оверрайдом валиден, приложение импортируется без ошибок. Реальный
+прогон (pull модели + генерация) — на машине с RTX 5060 Ti.
+
 ## Статус
 
-Итерация 5: auth (регистрация/логин/JWT) + мультитенантная изоляция.
-Проверено end-to-end через Docker, включая cross-org доступ (404).
-Дальше — очередь задач для долгих прогонов (Celery/Arq) и фронтенд UI.
+Итерация 6: self-hosted LLM провайдер через Ollama (CPU/GPU). Дальше —
+очередь задач для долгих прогонов (Celery/Arq) и фронтенд UI.
