@@ -12,15 +12,12 @@ from app.models.llm_insight import LLMInsight
 from app.models.user import User
 from app.schemas.forecast_run import ForecastRunCreate, ForecastRunOut
 from app.schemas.llm_insight import GenerateInsightsRequest, LLMInsightOut
-from app.services import storage
-from app.services.data_validation import DataValidationError, parse_and_clean_csv
-from app.services.forecasting import run_forecast
-from app.services.insights import generate_insight
+from app.services.queue import get_queue
 
 router = APIRouter(prefix="/forecasts", tags=["forecasts"])
 
 
-@router.post("", response_model=ForecastRunOut, status_code=201)
+@router.post("", response_model=ForecastRunOut, status_code=202)
 async def create_forecast_run(
     payload: ForecastRunCreate,
     user: User = Depends(get_current_user),
@@ -34,33 +31,16 @@ async def create_forecast_run(
         org_id=user.org_id,
         dataset_id=dataset.id,
         created_by=user.id,
-        status=ForecastRunStatus.RUNNING,
+        status=ForecastRunStatus.PENDING,
         forecast_params={"horizon": payload.horizon},
     )
     db.add(run)
     await db.commit()
     await db.refresh(run)
 
-    try:
-        content = storage.read(dataset.storage_path)
-        df = parse_and_clean_csv(
-            content,
-            dataset.column_mapping["date_column"],
-            dataset.column_mapping["value_column"],
-        )
-        result = run_forecast(df, payload.horizon)
-    except DataValidationError as exc:
-        run.status = ForecastRunStatus.FAILED
-        run.error_message = str(exc)
-    except Exception as exc:  # noqa: BLE001 — surfaced to the user as a failed run
-        run.status = ForecastRunStatus.FAILED
-        run.error_message = f"Forecast failed: {exc}"
-    else:
-        run.status = ForecastRunStatus.COMPLETED
-        run.result = result
+    queue = await get_queue()
+    await queue.enqueue_job("run_forecast_job", str(run.id))
 
-    await db.commit()
-    await db.refresh(run)
     return run
 
 
@@ -81,7 +61,7 @@ async def get_forecast_run(
     return await _get_owned_run(run_id, user, db)
 
 
-@router.post("/{run_id}/insights", response_model=list[LLMInsightOut], status_code=201)
+@router.post("/{run_id}/insights", response_model=list[LLMInsightOut], status_code=202)
 async def create_insights(
     run_id: uuid.UUID,
     payload: GenerateInsightsRequest,
@@ -92,17 +72,19 @@ async def create_insights(
     if run.status != ForecastRunStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Forecast run is not completed yet")
 
-    dataset = await db.get(Dataset, run.dataset_id)
-
-    insights = []
-    for provider in payload.providers:
-        insight = await generate_insight(run, dataset, provider)
-        db.add(insight)
-        insights.append(insight)
-
+    insights = [
+        LLMInsight(forecast_run_id=run.id, provider=provider, model_name="")
+        for provider in payload.providers
+    ]
+    db.add_all(insights)
     await db.commit()
     for insight in insights:
         await db.refresh(insight)
+
+    queue = await get_queue()
+    for insight in insights:
+        await queue.enqueue_job("generate_insight_job", str(insight.id))
+
     return insights
 
 

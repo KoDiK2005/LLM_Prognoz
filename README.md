@@ -138,7 +138,33 @@ docker compose run --rm backend python -m alembic upgrade head
 с GPU-оверрайдом валиден, приложение импортируется без ошибок. Реальный
 прогон (pull модели + генерация) — на машине с RTX 5060 Ti.
 
+## Очередь задач (Arq + Redis)
+
+Прогноз и генерация LLM-инсайтов выполняются не в HTTP-запросе, а в
+отдельном воркере — иначе долгий прогон/LLM-вызов держал бы соединение
+открытым и не масштабировался.
+
+- `POST /api/v1/forecasts` и `POST /api/v1/forecasts/{run_id}/insights`
+  теперь возвращают `202` и сразу создают записи со статусом `pending`
+  (`ForecastRun.status` / `LLMInsight.status`), ставя задачу в очередь
+  через `app/services/queue.py` (пул `arq`). Реальный результат —
+  через `GET` по тому же ресурсу (поллинг).
+- `app/worker.py` — `arq`-воркер (`run_forecast_job`,
+  `generate_insight_job`), каждая задача открывает свою DB-сессию и
+  обновляет статус (`running` → `completed`/`failed`).
+- Сбой одного провайдера в батче инсайтов помечает только его запись
+  `failed` — остальные обрабатываются независимо (как и раньше).
+- `docker-compose.yml` — сервисы `redis` (брокер) и `worker` (тот же
+  образ backend, команда `arq app.worker.WorkerSettings`).
+- Используется Arq, а не Celery: проект async-first (FastAPI +
+  SQLAlchemy async), Celery заточен под sync-воркеры и тащит лишнюю
+  сложность (eventlet/gevent-обёртки) для async-кода.
+- Проверено end-to-end локально: `docker compose up`, миграция
+  `0002_llm_insight_status` применяется чисто, прогноз через очередь
+  доходит до `completed`, инсайты — `completed` (mock) / `failed`
+  (недоступная Ollama) без падения всего батча.
+
 ## Статус
 
-Итерация 6: self-hosted LLM провайдер через Ollama (CPU/GPU). Дальше —
-очередь задач для долгих прогонов (Celery/Arq) и фронтенд UI.
+Итерация 7: асинхронная очередь задач (Arq/Redis) для прогнозов и
+LLM-инсайтов. Дальше — фронтенд UI (сейчас только Next.js-скелет).

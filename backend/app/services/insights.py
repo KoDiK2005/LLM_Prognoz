@@ -1,6 +1,6 @@
 from app.models.dataset import Dataset
 from app.models.forecast_run import ForecastRun
-from app.models.llm_insight import LLMInsight, LLMProvider
+from app.models.llm_insight import LLMInsight, LLMInsightStatus
 from app.services.llm.registry import get_client
 
 
@@ -27,33 +27,27 @@ Projected value at end of horizon: {last_forecast:.2f} ({pct_change:+.1f}% vs la
 """
 
 
-async def generate_insight(forecast_run: ForecastRun, dataset: Dataset, provider: LLMProvider) -> LLMInsight:
-    """Always returns an LLMInsight — a provider failure (e.g. an
-    unreachable self-hosted Ollama) is recorded as an error response
-    rather than raised, so one bad provider doesn't fail the whole batch.
+async def fill_insight(insight: LLMInsight, forecast_run: ForecastRun, dataset: Dataset) -> LLMInsight:
+    """Run the LLM call and write the result onto an existing (pending) insight row.
+
+    Never raises — a provider failure (e.g. an unreachable self-hosted
+    Ollama) is recorded as a failed insight rather than raised, so one bad
+    provider doesn't fail the whole batch of queued jobs.
     """
-    client = get_client(provider)
+    client = get_client(insight.provider)
+    insight.model_name = client.model_name
     prompt = build_prompt(forecast_run, dataset)
 
     try:
         response = await client.generate(prompt)
     except Exception as exc:  # noqa: BLE001 — surfaced to the user as the insight text
-        return LLMInsight(
-            forecast_run_id=forecast_run.id,
-            provider=provider,
-            model_name=client.model_name,
-            response_text=f"Error generating insight: {exc}",
-            prompt_tokens=0,
-            completion_tokens=0,
-            cost_usd=0,
-        )
+        insight.status = LLMInsightStatus.FAILED
+        insight.response_text = f"Error generating insight: {exc}"
+        return insight
 
-    return LLMInsight(
-        forecast_run_id=forecast_run.id,
-        provider=provider,
-        model_name=client.model_name,
-        response_text=response.text,
-        prompt_tokens=response.prompt_tokens,
-        completion_tokens=response.completion_tokens,
-        cost_usd=response.cost_usd,
-    )
+    insight.status = LLMInsightStatus.COMPLETED
+    insight.response_text = response.text
+    insight.prompt_tokens = response.prompt_tokens
+    insight.completion_tokens = response.completion_tokens
+    insight.cost_usd = response.cost_usd
+    return insight

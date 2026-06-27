@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from app.models.llm_insight import LLMProvider
+from app.models.llm_insight import LLMInsightStatus, LLMProvider
 
 
 class GenerateInsightsRequest(BaseModel):
@@ -15,6 +15,7 @@ class LLMInsightOut(BaseModel):
     id: uuid.UUID
     provider: LLMProvider
     model_name: str
+    status: LLMInsightStatus
     response_text: str
     prompt_tokens: int
     completion_tokens: int

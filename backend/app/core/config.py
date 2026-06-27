@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/llm_prognoz"
+    redis_url: str = "redis://localhost:6379/0"
 
     secret_key: str = "dev-secret-change-me"
     access_token_expire_minutes: int = 60 * 24 * 7

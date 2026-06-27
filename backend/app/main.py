@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,8 +8,16 @@ from app.api.datasets import router as datasets_router
 from app.api.forecasts import router as forecasts_router
 from app.api.health import router as health_router
 from app.core.config import settings
+from app.services.queue import close_queue
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await close_queue()
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

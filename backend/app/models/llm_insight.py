@@ -14,6 +14,12 @@ class LLMProvider(str, Enum):
     OLLAMA = "ollama"
 
 
+class LLMInsightStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class LLMInsight(UUIDPkMixin, TimestampMixin, Base):
     """A single LLM's narrative interpretation of a forecast run."""
 
@@ -26,7 +32,11 @@ class LLMInsight(UUIDPkMixin, TimestampMixin, Base):
     provider: Mapped[LLMProvider] = mapped_column(String(20), nullable=False)
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    response_text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[LLMInsightStatus] = mapped_column(
+        String(20), nullable=False, default=LLMInsightStatus.PENDING
+    )
+
+    response_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
