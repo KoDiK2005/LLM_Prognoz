@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const [history, setHistory] = useState<ForecastRun[]>([]);
   const [run, setRun] = useState<ForecastRun | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -30,14 +31,22 @@ export default function DashboardPage() {
         setDatasets(list);
         if (list.length > 0) setSelectedDatasetId(list[0].id);
       })
-      .catch(() => {});
+      .catch((err) => {
+        setLoadError(err instanceof ApiError ? err.message : "Не удалось загрузить датасеты");
+      });
   }, [router]);
 
   useEffect(() => {
     if (!selectedDatasetId) return;
     apiFetch<ForecastRun[]>(`/forecasts?dataset_id=${selectedDatasetId}`)
-      .then(setHistory)
-      .catch(() => setHistory([]));
+      .then((list) => {
+        setHistory(list);
+        setLoadError(null);
+      })
+      .catch((err) => {
+        setHistory([]);
+        setLoadError(err instanceof ApiError ? err.message : "Не удалось загрузить историю прогнозов");
+      });
   }, [selectedDatasetId]);
 
   function handleSelectDataset(datasetId: string) {
@@ -97,6 +106,8 @@ export default function DashboardPage() {
           Выйти
         </button>
       </header>
+
+      {loadError && <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>}
 
       <DatasetUpload onUploaded={handleUploaded} />
 

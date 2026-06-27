@@ -31,6 +31,12 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (!res.ok) {
+    if (res.status === 401 && token) {
+      // The token we sent was rejected (expired/invalid) — there's no
+      // recovery short of logging in again.
+      clearToken();
+      if (typeof window !== "undefined") window.location.href = "/login";
+    }
     const body = await res.json().catch(() => null);
     throw new ApiError(res.status, body?.detail ?? `Request failed (${res.status})`);
   }
