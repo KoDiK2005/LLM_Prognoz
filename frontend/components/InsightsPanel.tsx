@@ -90,9 +90,9 @@ export default function InsightsPanel({ runId }: { runId: string }) {
         {generating ? "Запускаем..." : "Сгенерировать"}
       </button>
 
-      <ul className="space-y-3">
+      <ul className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(220px, 1fr))` }}>
         {insights.map((insight) => (
-          <li key={insight.id} className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+          <li key={insight.id} className="flex flex-col rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium text-zinc-950 dark:text-zinc-50">
                 {insight.provider} {insight.model_name && `(${insight.model_name})`}

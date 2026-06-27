@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +42,24 @@ async def create_forecast_run(
     await queue.enqueue_job("run_forecast_job", str(run.id))
 
     return run
+
+
+@router.get("", response_model=list[ForecastRunOut])
+async def list_forecast_runs(
+    dataset_id: uuid.UUID = Query(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ForecastRun]:
+    dataset = await db.get(Dataset, dataset_id)
+    if dataset is None or dataset.org_id != user.org_id:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    result = await db.execute(
+        select(ForecastRun)
+        .where(ForecastRun.dataset_id == dataset_id)
+        .order_by(ForecastRun.created_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 async def _get_owned_run(run_id: uuid.UUID, user: User, db: AsyncSession) -> ForecastRun:

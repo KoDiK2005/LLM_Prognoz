@@ -7,12 +7,14 @@ import type { Dataset, ForecastRun } from "@/lib/types";
 import DatasetUpload from "@/components/DatasetUpload";
 import ForecastChart from "@/components/ForecastChart";
 import InsightsPanel from "@/components/InsightsPanel";
+import RunHistory from "@/components/RunHistory";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const [horizon, setHorizon] = useState(30);
+  const [history, setHistory] = useState<ForecastRun[]>([]);
   const [run, setRun] = useState<ForecastRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -32,6 +34,18 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => {
+    if (!selectedDatasetId) return;
+    apiFetch<ForecastRun[]>(`/forecasts?dataset_id=${selectedDatasetId}`)
+      .then(setHistory)
+      .catch(() => setHistory([]));
+  }, [selectedDatasetId]);
+
+  function handleSelectDataset(datasetId: string) {
+    setSelectedDatasetId(datasetId);
+    setRun(null);
+  }
+
+  useEffect(() => {
     if (!run || run.status === "completed" || run.status === "failed") {
       if (pollRef.current) clearInterval(pollRef.current);
       return;
@@ -39,6 +53,7 @@ export default function DashboardPage() {
     pollRef.current = setInterval(async () => {
       const fresh = await apiFetch<ForecastRun>(`/forecasts/${run.id}`);
       setRun(fresh);
+      setHistory((prev) => prev.map((h) => (h.id === fresh.id ? fresh : h)));
     }, 1500);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -52,7 +67,7 @@ export default function DashboardPage() {
 
   function handleUploaded(dataset: Dataset) {
     setDatasets((prev) => [dataset, ...prev]);
-    setSelectedDatasetId(dataset.id);
+    handleSelectDataset(dataset.id);
   }
 
   async function handleRunForecast() {
@@ -66,6 +81,7 @@ export default function DashboardPage() {
         body: JSON.stringify({ dataset_id: selectedDatasetId, horizon }),
       });
       setRun(created);
+      setHistory((prev) => [created, ...prev]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось запустить прогноз");
     } finally {
@@ -95,7 +111,7 @@ export default function DashboardPage() {
               <label className="block text-sm text-zinc-600 dark:text-zinc-400">Датасет</label>
               <select
                 value={selectedDatasetId ?? ""}
-                onChange={(e) => setSelectedDatasetId(e.target.value)}
+                onChange={(e) => handleSelectDataset(e.target.value)}
                 className="mt-1 rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
               >
                 {datasets.map((d) => (
@@ -142,6 +158,13 @@ export default function DashboardPage() {
           </div>
         )}
       </section>
+
+      {selectedDatasetId && (
+        <section className="space-y-3 rounded-xl border border-zinc-200 p-5 dark:border-zinc-800">
+          <h2 className="font-medium text-zinc-950 dark:text-zinc-50">История прогнозов</h2>
+          <RunHistory runs={history} selectedRunId={run?.id} onSelect={setRun} />
+        </section>
+      )}
 
       {run?.status === "completed" && <InsightsPanel runId={run.id} />}
     </div>
