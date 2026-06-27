@@ -46,6 +46,49 @@ jobs:
         run: pytest -v
         working-directory: backend
 
+  migrations:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: llm_prognoz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/llm_prognoz
+      SECRET_KEY: ci-test-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Apply all migrations to a fresh database
+        run: python -m alembic upgrade head
+        working-directory: backend
+
+      - name: Roll back all migrations (downgrade() must work too)
+        run: python -m alembic downgrade base
+        working-directory: backend
+
   frontend-build:
     runs-on: ubuntu-latest
 
