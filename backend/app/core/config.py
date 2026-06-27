@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-change-me"
     access_token_expire_minutes: int = 60 * 24 * 7
 
+    # Comma-separated list of allowed frontend origins for CORS.
+    cors_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
     # LLM provider API keys — populated via .env, never committed
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None

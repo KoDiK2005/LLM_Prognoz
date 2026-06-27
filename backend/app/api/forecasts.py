@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,13 +9,24 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.dataset import Dataset
 from app.models.forecast_run import ForecastRun, ForecastRunStatus
-from app.models.llm_insight import LLMInsight
+from app.models.llm_insight import LLMInsight, LLMInsightStatus
 from app.models.user import User
 from app.schemas.forecast_run import ForecastRunCreate, ForecastRunOut
 from app.schemas.llm_insight import GenerateInsightsRequest, LLMInsightOut
 from app.services.queue import get_queue
 
 router = APIRouter(prefix="/forecasts", tags=["forecasts"])
+
+_QUEUE_UNAVAILABLE_DETAIL = "Task queue is unavailable, please try again shortly"
+
+
+async def _enqueue(job_name: str, *args: str) -> None:
+    """Raises HTTPException(503) instead of an unhandled 500 if Redis is down."""
+    try:
+        queue = await get_queue()
+        await queue.enqueue_job(job_name, *args)
+    except (RedisError, OSError) as exc:
+        raise HTTPException(status_code=503, detail=_QUEUE_UNAVAILABLE_DETAIL) from exc
 
 
 @router.post("", response_model=ForecastRunOut, status_code=202)
@@ -38,8 +50,13 @@ async def create_forecast_run(
     await db.commit()
     await db.refresh(run)
 
-    queue = await get_queue()
-    await queue.enqueue_job("run_forecast_job", str(run.id))
+    try:
+        await _enqueue("run_forecast_job", str(run.id))
+    except HTTPException:
+        run.status = ForecastRunStatus.FAILED
+        run.error_message = _QUEUE_UNAVAILABLE_DETAIL
+        await db.commit()
+        raise
 
     return run
 
@@ -99,9 +116,15 @@ async def create_insights(
     for insight in insights:
         await db.refresh(insight)
 
-    queue = await get_queue()
-    for insight in insights:
-        await queue.enqueue_job("generate_insight_job", str(insight.id))
+    try:
+        for insight in insights:
+            await _enqueue("generate_insight_job", str(insight.id))
+    except HTTPException:
+        for insight in insights:
+            insight.status = LLMInsightStatus.FAILED
+            insight.response_text = _QUEUE_UNAVAILABLE_DETAIL
+        await db.commit()
+        raise
 
     return insights
 
