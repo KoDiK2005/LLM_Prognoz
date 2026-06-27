@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.dataset import Dataset
 from app.models.user import User
@@ -11,6 +12,24 @@ from app.services import storage
 from app.services.data_validation import DataValidationError, parse_and_clean_csv
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+_CHUNK_SIZE = 1024 * 1024
+
+
+async def _read_with_limit(file: UploadFile) -> bytes:
+    """Read in chunks and abort early once over the limit, rather than
+    trusting Content-Length (which a client can omit or misreport).
+    """
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    chunks = bytearray()
+    while chunk := await file.read(_CHUNK_SIZE):
+        chunks.extend(chunk)
+        if len(chunks) > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File exceeds the {settings.max_upload_size_mb}MB limit",
+            )
+    return bytes(chunks)
 
 
 @router.post("/upload", response_model=DatasetOut, status_code=201)
@@ -22,7 +41,7 @@ async def upload_dataset(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Dataset:
-    content = await file.read()
+    content = await _read_with_limit(file)
 
     try:
         parse_and_clean_csv(content, date_column, value_column)

@@ -1,3 +1,4 @@
+from app.core.config import settings
 from tests.conftest import register
 
 VALID_CSV = b"date,value\n" + b"\n".join(
@@ -40,6 +41,18 @@ async def test_upload_too_few_points_rejected(client):
         data={"date_column": "date", "value_column": "value", "name": "x"},
     )
     assert resp.status_code == 400
+
+
+async def test_upload_over_size_limit_rejected(client, monkeypatch):
+    monkeypatch.setattr(settings, "max_upload_size_mb", 0)
+    headers = await register(client, email="toobig@example.com")
+    resp = await client.post(
+        "/datasets/upload",
+        headers=headers,
+        files={"file": ("data.csv", VALID_CSV, "text/csv")},
+        data={"date_column": "date", "value_column": "value", "name": "x"},
+    )
+    assert resp.status_code == 413
 
 
 async def test_list_datasets_scoped_to_org(client):
