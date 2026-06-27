@@ -113,6 +113,10 @@ jobs:
         run: npx eslint .
         working-directory: frontend
 
+      - name: Unit tests
+        run: npm test
+        working-directory: frontend
+
       - name: Build
         run: npx next build
         working-directory: frontend
