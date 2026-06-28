@@ -19,6 +19,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [confirmingDatasetDelete, setConfirmingDatasetDelete] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function DashboardPage() {
   function handleSelectDataset(datasetId: string) {
     setSelectedDatasetId(datasetId);
     setRun(null);
+    setConfirmingDatasetDelete(false);
   }
 
   useEffect(() => {
@@ -95,6 +97,35 @@ export default function DashboardPage() {
       setError(err instanceof ApiError ? err.message : "Не удалось запустить прогноз");
     } finally {
       setStarting(false);
+    }
+  }
+
+  async function handleDeleteRun(target: ForecastRun) {
+    try {
+      await apiFetch(`/forecasts/${target.id}`, { method: "DELETE" });
+      setHistory((prev) => prev.filter((h) => h.id !== target.id));
+      if (run?.id === target.id) setRun(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось удалить прогноз");
+    }
+  }
+
+  async function handleDeleteDataset() {
+    if (!selectedDatasetId) return;
+    if (!confirmingDatasetDelete) {
+      setConfirmingDatasetDelete(true);
+      return;
+    }
+    setConfirmingDatasetDelete(false);
+    try {
+      await apiFetch(`/datasets/${selectedDatasetId}`, { method: "DELETE" });
+      const remaining = datasets.filter((d) => d.id !== selectedDatasetId);
+      setDatasets(remaining);
+      setHistory([]);
+      setRun(null);
+      setSelectedDatasetId(remaining[0]?.id ?? null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось удалить датасет");
     }
   }
 
@@ -152,6 +183,22 @@ export default function DashboardPage() {
             >
               {starting ? "Запускаем..." : "Прогнозировать"}
             </button>
+
+            <button
+              onClick={handleDeleteDataset}
+              disabled={!selectedDatasetId}
+              className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 disabled:opacity-50 dark:border-red-800 dark:text-red-400"
+            >
+              {confirmingDatasetDelete ? "Точно удалить?" : "Удалить датасет"}
+            </button>
+            {confirmingDatasetDelete && (
+              <button
+                onClick={() => setConfirmingDatasetDelete(false)}
+                className="text-sm text-zinc-500 underline dark:text-zinc-400"
+              >
+                Отмена
+              </button>
+            )}
           </div>
         )}
 
@@ -173,7 +220,7 @@ export default function DashboardPage() {
       {selectedDatasetId && (
         <section className="space-y-3 rounded-xl border border-zinc-200 p-5 dark:border-zinc-800">
           <h2 className="font-medium text-zinc-950 dark:text-zinc-50">История прогнозов</h2>
-          <RunHistory runs={history} selectedRunId={run?.id} onSelect={setRun} />
+          <RunHistory runs={history} selectedRunId={run?.id} onSelect={setRun} onDelete={handleDeleteRun} />
         </section>
       )}
 

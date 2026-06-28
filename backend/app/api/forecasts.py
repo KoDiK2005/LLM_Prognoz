@@ -96,6 +96,18 @@ async def get_forecast_run(
     return await _get_owned_run(run_id, user, db)
 
 
+@router.delete("/{run_id}", status_code=204)
+async def delete_forecast_run(
+    run_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    run = await _get_owned_run(run_id, user, db)
+    # llm_insights cascade-delete at the DB level.
+    await db.delete(run)
+    await db.commit()
+
+
 @router.post("/{run_id}/insights", response_model=list[LLMInsightOut], status_code=202)
 async def create_insights(
     run_id: uuid.UUID,

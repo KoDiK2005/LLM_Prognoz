@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,3 +73,20 @@ async def list_datasets(
         select(Dataset).where(Dataset.org_id == user.org_id).order_by(Dataset.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+@router.delete("/{dataset_id}", status_code=204)
+async def delete_dataset(
+    dataset_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    dataset = await db.get(Dataset, dataset_id)
+    if dataset is None or dataset.org_id != user.org_id:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    storage_path = dataset.storage_path
+    # Forecast runs and their llm_insights cascade-delete at the DB level.
+    await db.delete(dataset)
+    await db.commit()
+    await storage.delete(storage_path)

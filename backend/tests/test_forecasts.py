@@ -75,6 +75,35 @@ async def test_get_forecast_run_cross_org_404(client):
     assert resp.status_code == 404
 
 
+async def test_delete_forecast_run_cascades_to_insights(client):
+    headers = await register(client, email="delrun@example.com")
+    dataset_id = await _upload_dataset(client, headers)
+
+    created = await client.post(
+        "/forecasts", headers=headers, json={"dataset_id": dataset_id, "horizon": 5}
+    )
+    run_id = created.json()["id"]
+    await client.post(f"/forecasts/{run_id}/insights", headers=headers, json={"providers": ["openai"]})
+
+    resp = await client.delete(f"/forecasts/{run_id}", headers=headers)
+    assert resp.status_code == 204
+    assert (await client.get(f"/forecasts/{run_id}", headers=headers)).status_code == 404
+
+
+async def test_delete_forecast_run_cross_org_404(client):
+    headers_a = await register(client, email="delrun-a@example.com", org_name="Org A")
+    headers_b = await register(client, email="delrun-b@example.com", org_name="Org B")
+    dataset_id = await _upload_dataset(client, headers_a)
+
+    created = await client.post(
+        "/forecasts", headers=headers_a, json={"dataset_id": dataset_id, "horizon": 5}
+    )
+    run_id = created.json()["id"]
+
+    resp = await client.delete(f"/forecasts/{run_id}", headers=headers_b)
+    assert resp.status_code == 404
+
+
 async def test_list_forecast_runs_by_dataset(client):
     headers = await register(client, email="history@example.com")
     dataset_id = await _upload_dataset(client, headers)

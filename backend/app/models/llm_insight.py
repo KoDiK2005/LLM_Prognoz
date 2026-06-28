@@ -26,7 +26,7 @@ class LLMInsight(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "llm_insights"
 
     forecast_run_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("forecast_runs.id"), nullable=False, index=True
+        ForeignKey("forecast_runs.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     provider: Mapped[LLMProvider] = mapped_column(String(20), nullable=False)

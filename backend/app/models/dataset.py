@@ -22,4 +22,6 @@ class Dataset(UUIDPkMixin, TimestampMixin, Base):
     column_mapping: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     organization: Mapped["Organization"] = relationship(back_populates="datasets")
-    forecast_runs: Mapped[list["ForecastRun"]] = relationship(back_populates="dataset")
+    forecast_runs: Mapped[list["ForecastRun"]] = relationship(
+        back_populates="dataset", passive_deletes=True
+    )

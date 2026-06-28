@@ -11,6 +11,7 @@ STORAGE_ROOT = Path(__file__).resolve().parent.parent.parent / "storage"
 class StorageBackend(Protocol):
     def save(self, org_id: uuid.UUID, filename: str, content: bytes) -> str: ...
     def read(self, relative_path: str) -> bytes: ...
+    def delete(self, relative_path: str) -> None: ...
 
 
 class LocalStorage:
@@ -28,6 +29,9 @@ class LocalStorage:
 
     def read(self, relative_path: str) -> bytes:
         return (STORAGE_ROOT / relative_path).read_bytes()
+
+    def delete(self, relative_path: str) -> None:
+        (STORAGE_ROOT / relative_path).unlink(missing_ok=True)
 
 
 class S3Storage:
@@ -54,6 +58,9 @@ class S3Storage:
         obj = self._client.get_object(Bucket=self._bucket, Key=relative_path)
         return obj["Body"].read()
 
+    def delete(self, relative_path: str) -> None:
+        self._client.delete_object(Bucket=self._bucket, Key=relative_path)
+
 
 def _get_backend() -> StorageBackend:
     if settings.storage_backend == "s3":
@@ -67,3 +74,7 @@ async def save(org_id: uuid.UUID, filename: str, content: bytes) -> str:
 
 async def read(relative_path: str) -> bytes:
     return await asyncio.to_thread(_get_backend().read, relative_path)
+
+
+async def delete(relative_path: str) -> None:
+    await asyncio.to_thread(_get_backend().delete, relative_path)

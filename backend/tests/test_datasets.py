@@ -71,3 +71,39 @@ async def test_list_datasets_scoped_to_org(client):
 
     assert [d["name"] for d in resp_a.json()] == ["org-a-dataset"]
     assert resp_b.json() == []
+
+
+async def test_delete_dataset_cascades_to_runs_and_insights(client):
+    headers = await register(client, email="deleteme@example.com")
+    upload = await client.post(
+        "/datasets/upload",
+        headers=headers,
+        files={"file": ("data.csv", VALID_CSV, "text/csv")},
+        data={"date_column": "date", "value_column": "value", "name": "to-delete"},
+    )
+    dataset_id = upload.json()["id"]
+
+    run = await client.post("/forecasts", headers=headers, json={"dataset_id": dataset_id, "horizon": 5})
+    run_id = run.json()["id"]
+    await client.post(f"/forecasts/{run_id}/insights", headers=headers, json={"providers": ["openai"]})
+
+    resp = await client.delete(f"/datasets/{dataset_id}", headers=headers)
+    assert resp.status_code == 204
+
+    assert (await client.get(f"/forecasts/{run_id}", headers=headers)).status_code == 404
+    assert (await client.get(f"/forecasts?dataset_id={dataset_id}", headers=headers)).status_code == 404
+
+
+async def test_delete_dataset_cross_org_404(client):
+    headers_a = await register(client, email="del-a@example.com", org_name="Org A")
+    headers_b = await register(client, email="del-b@example.com", org_name="Org B")
+    upload = await client.post(
+        "/datasets/upload",
+        headers=headers_a,
+        files={"file": ("data.csv", VALID_CSV, "text/csv")},
+        data={"date_column": "date", "value_column": "value", "name": "org-a-only"},
+    )
+    dataset_id = upload.json()["id"]
+
+    resp = await client.delete(f"/datasets/{dataset_id}", headers=headers_b)
+    assert resp.status_code == 404
