@@ -7,6 +7,7 @@ import type { Dataset, ForecastRun } from "@/lib/types";
 import DatasetUpload from "@/components/DatasetUpload";
 import ForecastChart from "@/components/ForecastChart";
 import InsightsPanel from "@/components/InsightsPanel";
+import QuestionPanel from "@/components/QuestionPanel";
 import RunHistory from "@/components/RunHistory";
 
 export default function DashboardPage() {
@@ -224,6 +225,7 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {run?.status === "completed" && <QuestionPanel runId={run.id} />}
       {run?.status === "completed" && <InsightsPanel runId={run.id} />}
     </div>
   );

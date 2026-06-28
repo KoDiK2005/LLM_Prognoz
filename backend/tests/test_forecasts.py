@@ -163,6 +163,67 @@ async def test_insights_generate_mock_and_list(client):
     assert "mock response" in insights[0]["response_text"]
 
 
+async def test_ask_question_returns_mock_answer(client):
+    headers = await register(client, email="ask@example.com")
+    dataset_id = await _upload_dataset(client, headers)
+
+    created = await client.post(
+        "/forecasts", headers=headers, json={"dataset_id": dataset_id, "horizon": 5}
+    )
+    run_id = created.json()["id"]
+
+    resp = await client.post(
+        f"/forecasts/{run_id}/ask",
+        headers=headers,
+        json={"question": "What's the overall trend?", "provider": "openai"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["question"] == "What's the overall trend?"
+    assert "mock response" in body["answer"]
+    assert body["provider"] == "openai"
+
+
+async def test_ask_question_requires_completed_run(client, db_session):
+    headers = await register(client, email="ask-pending@example.com")
+    dataset_id = await _upload_dataset(client, headers)
+    me = (await client.get("/auth/me", headers=headers)).json()
+
+    run = ForecastRun(
+        org_id=uuid.UUID(me["org_id"]),
+        dataset_id=uuid.UUID(dataset_id),
+        created_by=uuid.UUID(me["id"]),
+        status=ForecastRunStatus.PENDING,
+        forecast_params={"horizon": 5},
+    )
+    db_session.add(run)
+    await db_session.commit()
+    await db_session.refresh(run)
+
+    resp = await client.post(
+        f"/forecasts/{run.id}/ask", headers=headers, json={"question": "Why?", "provider": "openai"}
+    )
+    assert resp.status_code == 400
+
+
+async def test_ask_question_unreachable_ollama_returns_error_text(client):
+    headers = await register(client, email="ask-ollama@example.com")
+    dataset_id = await _upload_dataset(client, headers)
+
+    created = await client.post(
+        "/forecasts", headers=headers, json={"dataset_id": dataset_id, "horizon": 5}
+    )
+    run_id = created.json()["id"]
+
+    resp = await client.post(
+        f"/forecasts/{run_id}/ask",
+        headers=headers,
+        json={"question": "Why?", "provider": "ollama"},
+    )
+    assert resp.status_code == 200
+    assert "Error generating answer" in resp.json()["answer"]
+
+
 async def test_queue_unavailable_returns_503_and_marks_run_failed(client, monkeypatch):
     import app.api.forecasts as forecasts_module
     from redis.exceptions import RedisError

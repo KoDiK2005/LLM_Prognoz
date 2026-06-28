@@ -44,3 +44,10 @@ export interface LLMInsight {
   cost_usd: string;
   created_at: string;
 }
+
+export interface AskQuestionResponse {
+  question: string;
+  answer: string;
+  provider: LLMProvider;
+  model_name: string;
+}

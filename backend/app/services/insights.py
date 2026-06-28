@@ -1,7 +1,13 @@
 from app.models.dataset import Dataset
 from app.models.forecast_run import ForecastRun
-from app.models.llm_insight import LLMInsight, LLMInsightStatus
+from app.models.llm_insight import LLMInsight, LLMInsightStatus, LLMProvider
+from app.services.llm.base import LLMClient
 from app.services.llm.registry import get_client
+
+# Cap how many raw (date, value) points go into a question prompt — enough
+# for the LLM to reference specific values without blowing up token usage
+# on a long history.
+_MAX_POINTS_IN_PROMPT = 60
 
 
 def build_prompt(forecast_run: ForecastRun, dataset: Dataset) -> str:
@@ -51,3 +57,46 @@ async def fill_insight(insight: LLMInsight, forecast_run: ForecastRun, dataset: 
     insight.completion_tokens = response.completion_tokens
     insight.cost_usd = response.cost_usd
     return insight
+
+
+def build_question_prompt(forecast_run: ForecastRun, dataset: Dataset, question: str) -> str:
+    """Answering a free-form question means the LLM needs the actual
+    series, not just the summary stats build_prompt() uses — so embed the
+    (capped) raw history/forecast points directly in the prompt instead of
+    real tool-use function calling, which would mean juggling three
+    different providers' incompatible tool-call APIs for a side project
+    this size. Simpler, and just as capable for a bounded series.
+    """
+    result = forecast_run.result
+    history = result["history"][-_MAX_POINTS_IN_PROMPT:]
+    forecast = result["forecast"]
+
+    history_str = ", ".join(f"{p['date'][:10]}={p['value']:.2f}" for p in history)
+    forecast_str = ", ".join(f"{p['date'][:10]}={p['value']:.2f}" for p in forecast)
+
+    return f"""You are a business analyst answering a question about a forecast.
+Use the data below to answer precisely and concisely (2-4 sentences). If the
+question can't be answered from this data, say so plainly.
+
+Dataset: {dataset.name}
+Model: {result["model"]} (seasonal period: {result.get("seasonal_periods") or "none detected"})
+Historical values (most recent {len(history)} points): {history_str}
+Forecast values: {forecast_str}
+
+Question: {question}
+"""
+
+
+async def answer_question(
+    forecast_run: ForecastRun, dataset: Dataset, provider: LLMProvider, question: str
+) -> tuple[str, LLMClient]:
+    """Returns (answer_text, client) — never raises; a provider failure is
+    surfaced as the answer text, same pattern as fill_insight().
+    """
+    client = get_client(provider)
+    prompt = build_question_prompt(forecast_run, dataset, question)
+    try:
+        response = await client.generate(prompt)
+    except Exception as exc:  # noqa: BLE001 — surfaced to the user as the answer text
+        return f"Error generating answer: {exc}", client
+    return response.text, client

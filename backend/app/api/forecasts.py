@@ -12,7 +12,8 @@ from app.models.forecast_run import ForecastRun, ForecastRunStatus
 from app.models.llm_insight import LLMInsight, LLMInsightStatus
 from app.models.user import User
 from app.schemas.forecast_run import ForecastRunCreate, ForecastRunOut
-from app.schemas.llm_insight import GenerateInsightsRequest, LLMInsightOut
+from app.schemas.llm_insight import AskQuestionRequest, AskQuestionResponse, GenerateInsightsRequest, LLMInsightOut
+from app.services.insights import answer_question
 from app.services.queue import get_queue
 
 router = APIRouter(prefix="/forecasts", tags=["forecasts"])
@@ -139,6 +140,27 @@ async def create_insights(
         raise
 
     return insights
+
+
+@router.post("/{run_id}/ask", response_model=AskQuestionResponse)
+async def ask_question(
+    run_id: uuid.UUID,
+    payload: AskQuestionRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AskQuestionResponse:
+    run = await _get_owned_run(run_id, user, db)
+    if run.status != ForecastRunStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Forecast run is not completed yet")
+
+    dataset = await db.get(Dataset, run.dataset_id)
+    answer, client = await answer_question(run, dataset, payload.provider, payload.question)
+    return AskQuestionResponse(
+        question=payload.question,
+        answer=answer,
+        provider=payload.provider,
+        model_name=client.model_name,
+    )
 
 
 @router.get("/{run_id}/insights", response_model=list[LLMInsightOut])
