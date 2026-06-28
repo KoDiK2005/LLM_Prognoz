@@ -5,7 +5,7 @@ import pytest
 from moto import mock_aws
 
 from app.core.config import settings
-from app.services.storage import S3Storage
+from app.services.storage import STORAGE_ROOT, LocalStorage, S3Storage
 from tests.conftest import register
 
 VALID_CSV = b"date,value\n" + b"\n".join(
@@ -34,6 +34,21 @@ def test_s3_storage_keys_are_namespaced_by_org(s3_bucket):
     org_id = uuid.uuid4()
     key = backend.save(org_id, "data.csv", b"x")
     assert key.startswith(f"{org_id}/")
+
+
+def test_local_storage_rejects_path_traversal_in_filename():
+    """file.filename on a multipart upload is attacker-controlled. A name
+    like "x/../../../etc/passwd" must not let the write escape STORAGE_ROOT.
+    """
+    backend = LocalStorage()
+    org_id = uuid.uuid4()
+    try:
+        relative_path = backend.save(org_id, "x/../../../../etc/passwd", b"pwned")
+        resolved = (STORAGE_ROOT / relative_path).resolve()
+        assert STORAGE_ROOT.resolve() in resolved.parents
+        assert resolved.name.endswith("_passwd")
+    finally:
+        backend.delete(relative_path)
 
 
 async def test_upload_and_forecast_work_with_s3_backend(client, s3_bucket, monkeypatch):

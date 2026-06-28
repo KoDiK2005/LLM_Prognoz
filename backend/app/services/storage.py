@@ -8,6 +8,17 @@ from app.core.config import settings
 STORAGE_ROOT = Path(__file__).resolve().parent.parent.parent / "storage"
 
 
+def _safe_filename(filename: str) -> str:
+    """Strip any directory components from a client-supplied filename.
+
+    `file.filename` on a multipart upload is attacker-controlled; without
+    this, a name like "x/../../../etc/passwd" would let path construction
+    escape STORAGE_ROOT entirely once the OS resolves the ".." segments on
+    open() — pathlib's `/` operator does not normalize them away.
+    """
+    return Path(filename).name or "upload"
+
+
 class StorageBackend(Protocol):
     def save(self, org_id: uuid.UUID, filename: str, content: bytes) -> str: ...
     def read(self, relative_path: str) -> bytes: ...
@@ -23,7 +34,7 @@ class LocalStorage:
         org_dir = STORAGE_ROOT / str(org_id)
         org_dir.mkdir(parents=True, exist_ok=True)
 
-        path = org_dir / f"{uuid.uuid4()}_{filename}"
+        path = org_dir / f"{uuid.uuid4()}_{_safe_filename(filename)}"
         path.write_bytes(content)
         return str(path.relative_to(STORAGE_ROOT))
 
@@ -50,7 +61,7 @@ class S3Storage:
         )
 
     def save(self, org_id: uuid.UUID, filename: str, content: bytes) -> str:
-        key = f"{org_id}/{uuid.uuid4()}_{filename}"
+        key = f"{org_id}/{uuid.uuid4()}_{_safe_filename(filename)}"
         self._client.put_object(Bucket=self._bucket, Key=key, Body=content)
         return key
 
