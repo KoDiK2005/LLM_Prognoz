@@ -48,7 +48,7 @@ async def upload_dataset(
     except DataValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    storage_path = storage.save(user.org_id, file.filename or "upload.csv", content)
+    storage_path = await storage.save(user.org_id, file.filename or "upload.csv", content)
 
     dataset = Dataset(
         org_id=user.org_id,

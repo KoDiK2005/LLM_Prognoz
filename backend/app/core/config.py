@@ -18,6 +18,15 @@ class Settings(BaseSettings):
 
     max_upload_size_mb: int = 10
 
+    # "local" (default, disk under ./storage) or "s3" (real S3 or any
+    # S3-compatible endpoint, e.g. self-hosted MinIO via s3_endpoint_url).
+    # AWS credentials are read by boto3 from the standard env vars
+    # (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), not from this app's config.
+    storage_backend: str = "local"
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    s3_region: str = "us-east-1"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

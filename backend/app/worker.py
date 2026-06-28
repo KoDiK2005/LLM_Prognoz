@@ -24,7 +24,7 @@ async def run_forecast_job(ctx: dict, run_id: str) -> None:
         await db.commit()
 
         try:
-            content = storage.read(dataset.storage_path)
+            content = await storage.read(dataset.storage_path)
             df = parse_and_clean_csv(
                 content,
                 dataset.column_mapping["date_column"],
