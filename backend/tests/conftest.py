@@ -5,6 +5,9 @@ import os
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://postgres:postgres@db:5432/llm_prognoz_test"
 )
+# A dedicated logical DB index, separate from the one the dev Arq queue
+# uses, so flushing it for test isolation can't nuke real dev/worker state.
+os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://redis:6379/15")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 import asyncpg
@@ -13,6 +16,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.api.forecasts as forecasts_module
+import app.services.rate_limit as rate_limit_module
 import app.worker as worker_module
 from app.core.config import settings
 from app.db.session import get_db
@@ -86,6 +90,16 @@ def _stub_queue(monkeypatch):
         return InlineQueue()
 
     monkeypatch.setattr(forecasts_module, "get_queue", fake_get_queue)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _reset_rate_limits():
+    # Same cross-event-loop constraint as the Postgres engine fixture: the
+    # Redis client must be created and closed within this test's own loop.
+    rate_limit_module._redis = None
+    await rate_limit_module.get_redis().flushdb()
+    yield
+    await rate_limit_module.close_redis()
 
 
 @pytest_asyncio.fixture

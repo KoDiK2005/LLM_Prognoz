@@ -9,12 +9,14 @@ from app.api.forecasts import router as forecasts_router
 from app.api.health import router as health_router
 from app.core.config import settings
 from app.services.queue import close_queue
+from app.services.rate_limit import close_redis
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
     await close_queue()
+    await close_redis()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

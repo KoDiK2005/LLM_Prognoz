@@ -52,3 +52,18 @@ async def test_me_requires_valid_token(client):
     resp = await client.get("/auth/me", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["email"] == "me@example.com"
+
+
+async def test_login_rate_limited_after_repeated_attempts(client):
+    await client.post(
+        "/auth/register",
+        json={"org_name": "Acme", "email": "bruteforce@example.com", "password": "testpass123"},
+    )
+
+    payload = {"email": "bruteforce@example.com", "password": "wrong"}
+    statuses = [
+        (await client.post("/auth/login", json=payload)).status_code for _ in range(11)
+    ]
+
+    assert statuses.count(429) >= 1
+    assert statuses[:10] == [401] * 10
