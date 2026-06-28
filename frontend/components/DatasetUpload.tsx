@@ -2,28 +2,15 @@
 
 import { useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
+import { guessColumn, parsePreview, type CsvPreview } from "@/lib/csv";
 import type { Dataset } from "@/lib/types";
-
-const PREVIEW_ROWS = 5;
-
-function parsePreview(text: string): { headers: string[]; rows: string[][] } {
-  const lines = text.split(/\r\n|\r|\n/).filter((line) => line.length > 0);
-  const headers = (lines[0] ?? "").split(",").map((h) => h.trim());
-  const rows = lines.slice(1, 1 + PREVIEW_ROWS).map((line) => line.split(",").map((c) => c.trim()));
-  return { headers, rows };
-}
-
-function guessColumn(headers: string[], hints: string[], fallbackIndex: number): string {
-  const match = headers.find((h) => hints.some((hint) => h.toLowerCase().includes(hint)));
-  return match ?? headers[fallbackIndex] ?? "";
-}
 
 export default function DatasetUpload({ onUploaded }: { onUploaded: (dataset: Dataset) => void }) {
   const [name, setName] = useState("");
   const [dateColumn, setDateColumn] = useState("date");
   const [valueColumn, setValueColumn] = useState("value");
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null);
+  const [preview, setPreview] = useState<CsvPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
