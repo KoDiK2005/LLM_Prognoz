@@ -39,6 +39,19 @@ describe("parsePreview", () => {
   it("returns empty headers for an empty string", () => {
     expect(parsePreview("")).toEqual({ headers: [""], rows: [] });
   });
+
+  it("keeps a comma inside a quoted field as part of that field", () => {
+    const csv = 'name,value\n"Smith, John",100\n';
+    const { headers, rows } = parsePreview(csv);
+    expect(headers).toEqual(["name", "value"]);
+    expect(rows).toEqual([["Smith, John", "100"]]);
+  });
+
+  it("unescapes a doubled quote inside a quoted field", () => {
+    const csv = 'name,value\n"Say ""hi""",100\n';
+    const { rows } = parsePreview(csv);
+    expect(rows).toEqual([['Say "hi"', "100"]]);
+  });
 });
 
 describe("guessColumn", () => {
