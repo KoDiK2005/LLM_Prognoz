@@ -4,13 +4,45 @@ import { useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
 import type { Dataset } from "@/lib/types";
 
+const PREVIEW_ROWS = 5;
+
+function parsePreview(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.split(/\r\n|\r|\n/).filter((line) => line.length > 0);
+  const headers = (lines[0] ?? "").split(",").map((h) => h.trim());
+  const rows = lines.slice(1, 1 + PREVIEW_ROWS).map((line) => line.split(",").map((c) => c.trim()));
+  return { headers, rows };
+}
+
+function guessColumn(headers: string[], hints: string[], fallbackIndex: number): string {
+  const match = headers.find((h) => hints.some((hint) => h.toLowerCase().includes(hint)));
+  return match ?? headers[fallbackIndex] ?? "";
+}
+
 export default function DatasetUpload({ onUploaded }: { onUploaded: (dataset: Dataset) => void }) {
   const [name, setName] = useState("");
   const [dateColumn, setDateColumn] = useState("date");
   const [valueColumn, setValueColumn] = useState("value");
   const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  function handleFileChange(selected: File | null) {
+    setFile(selected);
+    setPreview(null);
+    if (!selected) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      const parsed = parsePreview(text);
+      if (parsed.headers.length === 0) return;
+      setPreview(parsed);
+      setDateColumn(guessColumn(parsed.headers, ["date", "дата", "time"], 0));
+      setValueColumn(guessColumn(parsed.headers, ["value", "значени", "amount", "revenue"], 1));
+    };
+    reader.readAsText(selected.slice(0, 64 * 1024)); // first 64KB is plenty for a header + a few rows
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,6 +66,7 @@ export default function DatasetUpload({ onUploaded }: { onUploaded: (dataset: Da
       onUploaded(dataset);
       setName("");
       setFile(null);
+      setPreview(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось загрузить файл");
     } finally {
@@ -51,27 +84,82 @@ export default function DatasetUpload({ onUploaded }: { onUploaded: (dataset: Da
           type="file"
           accept=".csv"
           required
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
           className="mt-1 block w-full text-sm"
         />
       </div>
 
+      {preview && (
+        <div className="overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-zinc-50 dark:bg-zinc-900">
+              <tr>
+                {preview.headers.map((h) => (
+                  <th key={h} className="px-2 py-1 font-medium text-zinc-600 dark:text-zinc-400">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {preview.rows.map((row, i) => (
+                <tr key={i} className="border-t border-zinc-100 dark:border-zinc-800">
+                  {row.map((cell, j) => (
+                    <td key={j} className="px-2 py-1 text-zinc-700 dark:text-zinc-300">
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm text-zinc-600 dark:text-zinc-400">Колонка даты</label>
-          <input
-            value={dateColumn}
-            onChange={(e) => setDateColumn(e.target.value)}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
+          {preview ? (
+            <select
+              value={dateColumn}
+              onChange={(e) => setDateColumn(e.target.value)}
+              className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              {preview.headers.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={dateColumn}
+              onChange={(e) => setDateColumn(e.target.value)}
+              className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          )}
         </div>
         <div>
           <label className="block text-sm text-zinc-600 dark:text-zinc-400">Колонка значения</label>
-          <input
-            value={valueColumn}
-            onChange={(e) => setValueColumn(e.target.value)}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
+          {preview ? (
+            <select
+              value={valueColumn}
+              onChange={(e) => setValueColumn(e.target.value)}
+              className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              {preview.headers.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={valueColumn}
+              onChange={(e) => setValueColumn(e.target.value)}
+              className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          )}
         </div>
       </div>
 
